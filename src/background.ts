@@ -17,7 +17,8 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // Handle messages from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('Background received message:', message);
+  console.log('🔄 Background received message:', message);
+  console.log('📍 Message sender:', sender);
   
   switch (message.type) {
     case 'PROCESS_VOICE_COMMAND':

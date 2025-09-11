@@ -67,37 +67,125 @@ function extractSearchQuery(text: string): string {
 }
 
 async function performSearch(query: string): Promise<string> {
+  console.log('🔍 Looking for search inputs on:', window.location.hostname);
+  
   // Find search inputs on the page
   const searchInputs = findSearchInputs();
   
+  console.log('Found search inputs:', searchInputs.length);
+  searchInputs.forEach((input, index) => {
+    console.log(`Search input ${index}:`, {
+      element: input,
+      name: input.name,
+      id: input.id,
+      className: input.className,
+      placeholder: input.placeholder,
+      type: input.type
+    });
+  });
+  
   if (searchInputs.length === 0) {
+    console.log('❌ No search inputs found. Available inputs on page:');
+    const allInputs = document.querySelectorAll('input');
+    allInputs.forEach((input, index) => {
+      console.log(`Input ${index}:`, {
+        element: input,
+        name: input.name,
+        id: input.id,
+        className: input.className,
+        placeholder: input.placeholder,
+        type: input.type
+      });
+    });
     return 'No search box found on this page';
   }
   
   const searchInput = searchInputs[0];
   
+  console.log('🎯 Attempting to fill search input with:', query);
+  console.log('Search input before:', searchInput.value);
+  
   // Fill in the search query
   searchInput.value = query;
+  console.log('Search input after setting value:', searchInput.value);
+  
+  // Try different ways to trigger the input change
   searchInput.dispatchEvent(new Event('input', { bubbles: true }));
   searchInput.dispatchEvent(new Event('change', { bubbles: true }));
   
+  // For Google, try focusing the input first
+  searchInput.focus();
+  
+  // Wait a moment for any async processing
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  console.log('🔍 Attempting to submit search...');
+  
   // Try to submit the search
   const form = searchInput.closest('form');
+  console.log('Found form:', form);
+  
   if (form) {
+    console.log('Submitting via form...');
     form.dispatchEvent(new Event('submit', { bubbles: true }));
+    // Also try submitting the form directly
+    form.submit();
   } else {
-    // Try pressing Enter
-    searchInput.dispatchEvent(new KeyboardEvent('keydown', { 
-      key: 'Enter', 
-      bubbles: true 
-    }));
+    console.log('No form found, trying multiple submission methods...');
+    
+    // Method 1: Try clicking the search button
+    const searchButtons = [
+      document.querySelector('input[name="btnK"]'), // Google Search button
+      document.querySelector('cr-searchbox-icon#icon'), // Google Chrome new tab search icon
+      document.querySelector('button[aria-label*="Search" i]'),
+      document.querySelector('button[type="submit"]'),
+      document.querySelector('[role="button"][aria-label*="Search" i]'),
+    ].filter(btn => btn && (btn as HTMLElement).offsetParent !== null); // Only visible buttons
+    
+    if (searchButtons.length > 0) {
+      console.log('Found search button, clicking it...');
+      (searchButtons[0] as HTMLElement).click();
+    } else {
+      console.log('No search button found, trying Enter key events...');
+      
+      // Method 2: Try multiple Enter key events
+      const enterEvents = [
+        new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }),
+        new KeyboardEvent('keypress', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }),
+        new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, which: 13, bubbles: true })
+      ];
+      
+      enterEvents.forEach(event => {
+        searchInput.dispatchEvent(event);
+      });
+      
+      // Method 3: Try triggering on the document (some sites listen globally)
+      document.dispatchEvent(new KeyboardEvent('keydown', { 
+        key: 'Enter', 
+        keyCode: 13, 
+        which: 13, 
+        bubbles: true 
+      }));
+      
+      // Method 4: Try simulating user typing (some sites need this)
+      setTimeout(() => {
+        searchInput.dispatchEvent(new KeyboardEvent('keydown', { 
+          key: 'Enter', 
+          keyCode: 13, 
+          which: 13, 
+          bubbles: true
+        }));
+      }, 200);
+    }
   }
   
+  console.log('✅ Search submission attempted');
   return `Searched for: ${query}`;
 }
 
 function findSearchInputs(): HTMLInputElement[] {
   const selectors = [
+    // Standard search input patterns
     'input[type="search"]',
     'input[placeholder*="search" i]',
     'input[name*="search" i]',
@@ -105,7 +193,19 @@ function findSearchInputs(): HTMLInputElement[] {
     'input[class*="search" i]',
     '.search-input input',
     '#search input',
-    '[role="searchbox"]'
+    '[role="searchbox"]',
+    
+    // Google-specific patterns
+    'input#input[type="search"]', // Google's Chrome new tab search box
+    'input.gLFyf',  // Google's main search box class
+    'input[name="q"]', // Google's search parameter
+    'textarea[name="q"]', // Google sometimes uses textarea
+    'input.baeIxf', // Google's current search box class (from debug)
+    
+    // Other major sites
+    'input[name="field-keywords"]', // Amazon
+    'input[id="twotabsearchtextbox"]', // Amazon
+    'input[placeholder*="Search" i]', // Generic search with capital S
   ];
   
   const inputs: HTMLInputElement[] = [];
