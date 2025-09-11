@@ -18,13 +18,27 @@ let audioChunks: Blob[] = [];
 document.addEventListener('DOMContentLoaded', initializePopup);
 
 async function initializePopup() {
-  console.log('Initializing popup...');
+  console.log('🟢 Initializing popup...');
+  console.log('voiceButton element:', voiceButton);
+  console.log('settingsLink element:', settingsLink);
   
   // Set up event listeners
+  console.log('Setting up mousedown listener...');
   voiceButton.addEventListener('mousedown', startRecording);
+  console.log('Setting up mouseup listener...');
   voiceButton.addEventListener('mouseup', stopRecording);
+  console.log('Setting up mouseleave listener...');
   voiceButton.addEventListener('mouseleave', stopRecording); // Stop if mouse leaves button
+  
+  // Add a simple click listener for testing
+  console.log('Adding test click listener...');
+  voiceButton.addEventListener('click', () => {
+    console.log('🟡 Button clicked! (click event)');
+  });
+  console.log('Setting up settings click listener...');
   settingsLink.addEventListener('click', openSettings);
+  
+  console.log('✅ All event listeners set up');
   
   // Get current tab info
   await updateTabInfo();
@@ -48,12 +62,29 @@ async function updateTabInfo() {
 }
 
 async function startRecording() {
-  if (isRecording) return;
+  console.log('🔴 startRecording() function called!');
+  
+  if (isRecording) {
+    console.log('Already recording, returning...');
+    return;
+  }
   
   console.log('Starting voice recording...');
+  console.log('Navigator.mediaDevices available:', !!navigator.mediaDevices);
+  console.log('getUserMedia available:', !!navigator.mediaDevices?.getUserMedia);
   
   try {
-    // Request microphone permission
+    // Check if microphone is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Microphone not supported');
+    }
+    
+    // Check current permissions first
+    console.log('Checking microphone permissions...');
+    updateStatus('🔍 Checking microphone access...', 'processing');
+    
+    // Request microphone permission with user-friendly error handling
+    console.log('Requesting microphone access...');
     const stream = await navigator.mediaDevices.getUserMedia({ 
       audio: {
         echoCancellation: true,
@@ -61,6 +92,8 @@ async function startRecording() {
         sampleRate: 16000 // Good for speech recognition
       } 
     });
+    
+    console.log('✅ Microphone access granted!');
     
     // Set up MediaRecorder
     mediaRecorder = new MediaRecorder(stream, {
@@ -86,11 +119,48 @@ async function startRecording() {
     
   } catch (error) {
     console.error('Error starting recording:', error);
-    updateStatus('❌ Microphone access denied', 'ready');
+    console.error('Error name:', (error as any)?.name);
+    console.error('Error message:', (error as any)?.message);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     
-    // Show helpful message
-    if (error instanceof Error && error.name === 'NotAllowedError') {
-      alert('Please allow microphone access to use voice commands.');
+    // Handle different types of microphone errors
+    if (error instanceof DOMException || (error instanceof Error)) {
+      switch (error.name) {
+        case 'NotAllowedError':
+          updateStatus('❌ Microphone access denied', 'ready');
+          console.log('NotAllowedError: User denied microphone access or extension lacks permission');
+          showMicrophoneHelp();
+          break;
+        case 'NotFoundError':
+          updateStatus('❌ No microphone found', 'ready');
+          console.log('NotFoundError: No microphone hardware detected');
+          alert('No microphone detected. Please connect a microphone and try again.');
+          break;
+        case 'NotReadableError':
+          updateStatus('❌ Microphone in use', 'ready');
+          console.log('NotReadableError: Microphone is being used by another application');
+          alert('Microphone is being used by another application. Please close other apps and try again.');
+          break;
+        case 'OverconstrainedError':
+          updateStatus('❌ Microphone constraints error', 'ready');
+          console.log('OverconstrainedError: Requested microphone settings not available');
+          alert('Microphone settings not supported. Trying with default settings...');
+          // Try again with simpler settings
+          trySimpleRecording();
+          break;
+        case 'SecurityError':
+          updateStatus('❌ Security error', 'ready');
+          console.log('SecurityError: Extension context security issue');
+          alert('Security error. Please reload the extension and try again.');
+          break;
+        default:
+          updateStatus('❌ Microphone error', 'ready');
+          console.error('Unknown microphone error:', error.name, error.message);
+          alert(`Microphone error: ${error.name} - ${error.message}`);
+      }
+    } else {
+      updateStatus('❌ Unknown error', 'ready');
+      console.error('Non-standard error:', typeof error, error);
     }
   }
 }
@@ -211,6 +281,61 @@ function openSettings(event: Event) {
   event.preventDefault();
   console.log('Settings clicked - will implement later');
   // TODO: Open options page
+}
+
+async function trySimpleRecording() {
+  console.log('Trying simple recording with basic constraints...');
+  
+  try {
+    // Try with minimal constraints
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: true // Just basic audio, no special settings
+    });
+    
+    console.log('✅ Simple microphone access granted!');
+    
+    // Set up MediaRecorder with basic settings
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+    
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunks.push(event.data);
+      }
+    };
+    
+    mediaRecorder.onstop = handleRecordingComplete;
+    
+    // Start recording
+    mediaRecorder.start();
+    isRecording = true;
+    
+    updateStatus('🎙️ Recording... (basic mode)', 'recording');
+    updateButton('recording');
+    
+  } catch (error) {
+    console.error('Simple recording also failed:', error);
+    updateStatus('❌ Microphone unavailable', 'ready');
+    updateButton('ready');
+  }
+}
+
+function showMicrophoneHelp() {
+  const helpMessage = `
+🎤 Microphone Access Required
+
+To use voice commands, please:
+
+1. Click the 🔒 lock icon in Chrome's address bar
+2. Set "Microphone" to "Allow" 
+3. Refresh this page and try again
+
+Or:
+1. Go to chrome://settings/content/microphone
+2. Add this site to "Allow" list
+  `;
+  
+  alert(helpMessage);
 }
 
 console.log('✅ Web Whisper Popup Script Ready');
